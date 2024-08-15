@@ -40,6 +40,7 @@
 #if !defined(WLED_DISABLE_PARTICLESYSTEM2D) || !defined(WLED_DISABLE_PARTICLESYSTEM1D)  
 #include "FXparticleSystem.h"
 #include "wled.h"
+#define FASTLED_INTERNAL
 #include "FastLED.h"
 #include "FX.h"
 #endif
@@ -299,8 +300,8 @@ void ParticleSystem::particleMoveUpdate(PSparticle &part, PSsettings2D *options,
       part.hue = part.ttl > 255 ? 255 : part.ttl; //set color to ttl
 
     bool usesize = false; // particle uses individual size rendering
-    int32_t newX = part.x + (int16_t)part.vx;
-    int32_t newY = part.y + (int16_t)part.vy;
+    int32_t newX = part.x + (int_fast16_t)part.vx;
+    int32_t newY = part.y + (int_fast16_t)part.vy;
     part.outofbounds = 0; // reset out of bounds (in case particle was created outside the matrix and is now moving into view)
 
     if (advancedproperties) //using individual particle size?
@@ -379,8 +380,8 @@ void ParticleSystem::particleMoveUpdate(PSparticle &part, PSsettings2D *options,
         }
       }
     }
-    part.x = (int16_t)newX; // set new position
-    part.y = (int16_t)newY; // set new position
+    part.x = (int_fast16_t)newX; // set new position
+    part.y = (int_fast16_t)newY; // set new position
   }
 }
 
@@ -522,7 +523,7 @@ void ParticleSystem::applyForce(uint16_t particleindex, int8_t xforce, int8_t yf
 void ParticleSystem::applyForce(int8_t xforce, int8_t yforce)
 {
   // for small forces, need to use a delay counter
-  uint8_t tempcounter;
+  uint8_t tempcounter = 0;
   // note: this is not the most compuatationally efficient way to do this, but it saves on duplacte code and is fast enough
   for (uint i = 0; i < usedParticles; i++)
   {
@@ -538,8 +539,8 @@ void ParticleSystem::applyForce(int8_t xforce, int8_t yforce)
 // force is in 3.4 fixed point notation so force=16 means apply v+1 each frame (useful force range is +/- 127)
 void ParticleSystem::applyAngleForce(PSparticle *part, int8_t force, uint16_t angle, uint8_t *counter)
 {
-  int8_t xforce = ((int32_t)force * cos16(angle)) / 32767; // force is +/- 127
-  int8_t yforce = ((int32_t)force * sin16(angle)) / 32767; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
+  int_fast8_t xforce = ((int32_t)force * cos16(angle)) / 32767; // force is +/- 127
+  int_fast8_t yforce = ((int32_t)force * sin16(angle)) / 32767; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
   // note: sin16 is 10% faster than sin8() on ESP32 but on ESP8266 it is 9% slower
   applyForce(part, xforce, yforce, counter);
 }
@@ -555,8 +556,8 @@ void ParticleSystem::applyAngleForce(uint16_t particleindex, int8_t force, uint1
 // angle is from 0-65535 (=0-360deg) angle = 0 means in positive x-direction (i.e. to the right)
 void ParticleSystem::applyAngleForce(int8_t force, uint16_t angle)
 {
-  int8_t xforce = ((int32_t)force * cos16(angle)) / 32767; // force is +/- 127
-  int8_t yforce = ((int32_t)force * sin16(angle)) / 32767; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
+  int_fast8_t xforce = ((int32_t)force * cos16(angle)) / 32767; // force is +/- 127
+  int_fast8_t yforce = ((int32_t)force * sin16(angle)) / 32767; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
   applyForce(xforce, yforce);
 }
 
@@ -633,8 +634,8 @@ void ParticleSystem::pointAttractor(uint16_t particleindex, PSparticle *attracto
   }
 
   int32_t force = ((int32_t)strength << 16) / distanceSquared;
-  int8_t xforce = (force * dx) / 1024; // scale to a lower value, found by experimenting
-  int8_t yforce = (force * dy) / 1024; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
+  int_fast8_t xforce = (force * dx) / 1024; // scale to a lower value, found by experimenting
+  int_fast8_t yforce = (force * dy) / 1024; // note: cannot use bit shifts as bit shifting is asymmetrical for positive and negative numbers and this needs to be accurate!
 
   applyForce(particleindex, xforce, yforce);
 }
@@ -703,8 +704,13 @@ void ParticleSystem::ParticleSys_render(bool firemode, uint32_t fireintensity)
 {
   
   CRGB baseRGB;
+
+#ifdef WLED_DISABLE_PARTICLESYSTEM_BUFFER
+  bool useLocalBuffer = false; //use local rendering buffer, gives huge speed boost (at least 30% more FPS)
+#else
   bool useLocalBuffer = true; //use local rendering buffer, gives huge speed boost (at least 30% more FPS)
-  CRGB **framebuffer = NULL; //local frame buffer
+#endif
+  CRGB **framebuffer = NULL; //local frame buffer // WLEDMM wtf why does this work at all ???
   CRGB **renderbuffer = NULL; //local particle render buffer for advanced particles
   uint32_t i;
   uint32_t brightness; // particle brightness, fades if dying
@@ -796,9 +802,9 @@ void ParticleSystem::ParticleSys_render(bool firemode, uint32_t fireintensity)
     uint32_t bluramount = particlesize; 
     uint32_t bitshift = 0;
   
-    for(uint32_t i = 0; i < passes; i++)
+    for(uint32_t li = 0; li < passes; li++) // // WLEDMM fix compiler warning: variable 'i' shadows a local variable
     {
-      if (i == 2) // for the last two passes, use higher amount of blur (results in a nicer brightness gradient with soft edges)
+      if (li == 2) // for the last two passes, use higher amount of blur (results in a nicer brightness gradient with soft edges)
         bitshift = 1;
       
       if (useLocalBuffer)
@@ -820,7 +826,7 @@ void ParticleSystem::ParticleSys_render(bool firemode, uint32_t fireintensity)
         SEGMENT.setPixelColorXY((int)x, (int)yflipped, framebuffer[x][y]);
       }
     }
-    free(framebuffer); 
+    free(framebuffer); // WLEDMM fix me
   }
   if (renderbuffer)
     free(renderbuffer); 
@@ -1085,7 +1091,7 @@ void ParticleSystem::fireParticleupdate()
         {
           if (particlesettings.wrapX)
           {
-            particles[i].x = (uint16_t)particles[i].x % (maxX + 1); 
+            particles[i].x = (uint_fast16_t)particles[i].x % (maxX + 1); 
           }
           else if ((particles[i].x < -PS_P_HALFRADIUS) || (particles[i].x > maxX + PS_P_HALFRADIUS)) //if fully out of view
           {
@@ -1148,8 +1154,8 @@ void ParticleSystem::collideParticles(PSparticle *particle1, PSparticle *particl
   int32_t dy = particle2->y - particle1->y; 
   int32_t distanceSquared = dx * dx + dy * dy;
   // Calculate relative velocity (if it is zero, could exit but extra check does not overall speed but deminish it)
-  int32_t relativeVx = (int16_t)particle2->vx - (int16_t)particle1->vx;
-  int32_t relativeVy = (int16_t)particle2->vy - (int16_t)particle1->vy;
+  int32_t relativeVx = (int_fast16_t)particle2->vx - (int_fast16_t)particle1->vx;
+  int32_t relativeVy = (int_fast16_t)particle2->vy - (int_fast16_t)particle1->vy;
 
   // if dx and dy are zero (i.e. they meet at the center) give them an offset, if speeds are also zero, also offset them (pushes them apart if they are clumped before enabling collisions)
   if (distanceSquared == 0) 
@@ -1259,10 +1265,11 @@ void ParticleSystem::collideParticles(PSparticle *particle1, PSparticle *particl
 CRGB **ParticleSystem::allocate2Dbuffer(uint32_t cols, uint32_t rows)
 {  
   CRGB ** array2D = (CRGB **)calloc(cols, sizeof(CRGB *) + rows * sizeof(CRGB));
-  if (array2D == NULL)
-    DEBUG_PRINT(F("PS buffer alloc failed"));
-  else
+  if (array2D == NULL) {
+    USER_PRINTF("!PS buffer alloc failed: %u bytes. (%u x %u)\n", cols * (sizeof(CRGB *) + rows * sizeof(CRGB)), cols, rows);
+} else
   {
+    //USER_PRINTF("PS buffer allocated: %u bytes. (%u x %u)\n", cols * (sizeof(CRGB *) + rows * sizeof(CRGB)), cols, rows);
     // assign pointers of 2D array
     CRGB *start = (CRGB *)(array2D + cols);
     for (uint i = 0; i < cols; i++)
@@ -1461,8 +1468,8 @@ bool initParticleSystem2D(ParticleSystem *&PartSys, uint8_t requestedsources, ui
   }
   //Serial.print("SEGENV.data ptr");
   //Serial.println((uintptr_t)(SEGENV.data));
-  uint16_t cols = strip.isMatrix ? SEGMENT.virtualWidth() : 1;
-  uint16_t rows = strip.isMatrix ? SEGMENT.virtualHeight() : SEGMENT.virtualLength();
+  uint_fast16_t cols = strip.isMatrix ? SEGMENT.virtualWidth() : 1;
+  uint_fast16_t rows = strip.isMatrix ? SEGMENT.virtualHeight() : SEGMENT.virtualLength();
   //Serial.println("calling constructor");
   PartSys = new (SEGENV.data) ParticleSystem(cols, rows, numparticles, numsources, advanced, sizecontrol); // particle system constructor
   //Serial.print("PS pointer at ");
@@ -1665,7 +1672,7 @@ void ParticleSystem1D::particleMoveUpdate(PSparticle1D &part, PSsettings1D *opti
       part.hue = part.ttl > 250 ? 250 : part.ttl; //set color to ttl 
             
     bool usesize = false; // particle uses individual size rendering    
-    int32_t newX = part.x + (int16_t)part.vx;
+    int32_t newX = part.x + (int_fast16_t)part.vx;
     part.outofbounds = 0; // reset out of bounds (in case particle was created outside the matrix and is now moving into view)
     if (advancedproperties) //using individual particle size?
     {    
@@ -1751,7 +1758,7 @@ void ParticleSystem1D::particleMoveUpdate(PSparticle1D &part, PSsettings1D *opti
       }
     }
     if (!part.fixed)
-      part.x = (int16_t)newX; // set new position
+      part.x = (int_fast16_t)newX; // set new position
     else
       part.vx = 0; //set speed to zero. note: particle can get speed in collisions, if unfixed, it should not speed away
   }
@@ -1773,7 +1780,7 @@ void ParticleSystem1D::applyForce(PSparticle1D *part, int8_t xforce, uint8_t *co
 void ParticleSystem1D::applyForce(int8_t xforce)
 {
   // for small forces, need to use a delay counter
-  uint8_t tempcounter;
+  uint8_t tempcounter = 0;
   // note: this is not the most compuatationally efficient way to do this, but it saves on duplacte code and is fast enough
   for (uint i = 0; i < usedParticles; i++)
   {
@@ -1817,7 +1824,7 @@ void ParticleSystem1D::applyFriction(int32_t coefficient)
   for (uint32_t i = 0; i < usedParticles; i++)
   {
     if (particles[i].ttl)
-       particles[i].vx = ((int16_t)particles[i].vx * friction) / 255; 
+       particles[i].vx = ((int_fast16_t)particles[i].vx * friction) / 255; 
   }
 }
 
@@ -2065,7 +2072,8 @@ void ParticleSystem1D::handleCollisions()
         {
           if (advPartProps) // use advanced size properties
           {
-            collisiondistance = PS_P_MINHARDRADIUS_1D + ((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1;
+            //collisiondistance = PS_P_MINHARDRADIUS_1D + ((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1;
+            collisiondistance = (PS_P_MINHARDRADIUS_1D) + (((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1); // WLEDMM fix compiler warning: suggest parentheses around '+' inside '>>' 
           }
           dx = particles[j].x - particles[i].x;  
           int32_t  dv = (int32_t)particles[j].vx - (int32_t)particles[i].vx;        
