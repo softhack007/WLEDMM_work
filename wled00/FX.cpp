@@ -6471,6 +6471,7 @@ uint16_t mode_particlevortex(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, NUMBEROFSOURCES))
       return mode_static(); // allocation failed
 
@@ -6612,6 +6613,7 @@ uint16_t mode_particlefireworks(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, NUMBEROFSOURCES, true)) // init with advanced particle properties
       return mode_static(); // allocation failed
     PartSys->setKillOutOfBounds(true); //out of bounds particles dont return (except on top, taken care of by gravity setting)
@@ -6640,13 +6642,13 @@ uint16_t mode_particlefireworks(void)
   uint32_t emitparticles; // number of particles to emit for each rocket's state
 
   // variables for circle explosions
-  uint8_t speed;
+  uint8_t speed =0;
   uint8_t currentspeed;
-  uint16_t angle;
-  uint8_t counter;
+  uint16_t angle = 0;
+  uint8_t counter = 0;
   uint16_t angleincrement;
   uint8_t percircle;
-  uint8_t speedvariation;
+  uint8_t speedvariation = 0;
   bool circularexplosion = false;
   for (j = 0; j < numRockets; j++)
   {
@@ -6787,10 +6789,12 @@ uint16_t mode_particlevolcano(void)
 
   if (SEGMENT.call == 0) // initialization
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, NUMBEROFSOURCES)) // init, no additional data needed
       return mode_static(); // allocation failed 
+    int grav = max(1, min(12, 192 / SEGENV.height())); // WLEDMM
     PartSys->setBounceY(true);
-    PartSys->setGravity(); // enable with default gforce
+    PartSys->setGravity(grav); // enable with default gforce
     PartSys->setKillOutOfBounds(true); // out of bounds particles dont return (except on top, taken care of by gravity setting)
     PartSys->setMotionBlur(190); // anable motion blur
     numSprays = min(PartSys->numSources, (uint32_t)NUMBEROFSOURCES); // number of sprays
@@ -6862,6 +6866,7 @@ uint16_t mode_particlefire(void)
 
   if (SEGMENT.call == 0) // initialization TODO: make this a PSinit function, this is needed in every particle FX but first, get this working.
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 25, 4)) //maximum number of source (PS will determine the exact number based on segment size) and need 4 additional bytes for time keeping (uint32_t lastcall)
       return mode_static(); // allocation failed; //allocation failed
     SEGENV.aux0 = random16(); // aux0 is wind position (index) in the perlin noise
@@ -6879,6 +6884,8 @@ uint16_t mode_particlefire(void)
   PartSys->setMotionBlur(SEGMENT.check1 * 120); // anable/disable motion blur
 
   uint32_t firespeed = max((uint8_t)100, SEGMENT.speed); //limit speed to 100 minimum, reduce frame rate to make it slower (slower speeds than 100 do not look nice)  
+  int vscale = max(1, min(4, 128 / SEGENV.height())); // WLEDMM
+
   if (SEGMENT.speed < 100) //slow, limit FPS
   {
     uint32_t *lastcall = reinterpret_cast<uint32_t *>(PartSys->PSdataEnd);
@@ -6917,8 +6924,8 @@ uint16_t mode_particlefire(void)
         PartSys->sources[i].maxLife = random16(7) + 13; // defines flame height together with the vy speed, vy speed*maxlife/PS_P_RADIUS is the average flame height
         PartSys->sources[i].minLife = 4;
         PartSys->sources[i].vx = (int8_t)random(-3, 3); // emitting speed (sideways)
-        PartSys->sources[i].vy = 5 + (firespeed >> 2);  // emitting speed (upwards) -> this is good
-        PartSys->sources[i].var = (random16(1 + (firespeed >> 5)) + 2); // speed variation around vx,vy (+/- var)
+        PartSys->sources[i].vy = 5 + (firespeed >> 2) * vscale;  // emitting speed (upwards) -> this is good  // WLEDMM
+        PartSys->sources[i].var = (random16(1 + (firespeed >> 5))*vscale + 2); // speed variation around vx,vy (+/- var)  // WLEDMM
     }
     
   }
@@ -6978,6 +6985,7 @@ uint16_t mode_particlepit(void)
 
   if (SEGMENT.call == 0) // initialization TODO: make this a PSinit function, this is needed in every particle FX but first, get this working.
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1, 0, true)) // init, request one source (actually dont really need one TODO: test if using zero sources also works)
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setKillOutOfBounds(true);
@@ -7063,6 +7071,7 @@ uint16_t mode_particlewaterfall(void)
 
   if (SEGMENT.call == 0) // initialization TODO: make this a PSinit function, this is needed in every particle FX but first, get this working.
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 12)) // init, request 12 sources, no additional data needed
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setGravity();  // enable with default gforce
@@ -7109,11 +7118,14 @@ uint16_t mode_particlewaterfall(void)
 
   if (SEGMENT.call % (9 - (SEGMENT.intensity >> 5)) == 0 && SEGMENT.intensity > 0) // every nth frame, cycle color and emit particles, do not emit if intensity is zero
   {
+    int psconst1 = (PartSys->maxXpixel - numSprays) * PS_P_RADIUS;  // WLEDMM optimization
+    int psconst2 = PS_P_RADIUS * 2;                                 // WLEDMM optimization
     for (i = 0; i < numSprays; i++)
     {
       PartSys->sources[i].vy = -SEGMENT.speed >> 3; // emitting speed, down
       //PartSys->sources[i].source.x = map(SEGMENT.custom3, 0, 31, 0, (PartSys->maxXpixel - numSprays * 2) * PS_P_RADIUS) + i * PS_P_RADIUS * 2; // emitter position
-      PartSys->sources[i].source.x = map(SEGMENT.custom3, 0, 31, 0, (PartSys->maxXpixel - numSprays) * PS_P_RADIUS) + i * PS_P_RADIUS * 2; // emitter position
+      //PartSys->sources[i].source.x = map(SEGMENT.custom3, 0, 31, 0, (PartSys->maxXpixel - numSprays) * PS_P_RADIUS) + i * PS_P_RADIUS * 2; // emitter position
+      PartSys->sources[i].source.x = map2(SEGMENT.custom3, 0, 31, 0, psconst1) + i * psconst2; // emitter position  // WLEDMM
       PartSys->sources[i].source.y = PartSys->maxY + (PS_P_RADIUS * ((i<<2) + 4)); // source y position, few pixels above the top to increase spreading before entering the matrix
       PartSys->sources[i].var = (SEGMENT.custom1 >> 3); // emiting variation 0-32
       PartSys->sprayEmit(PartSys->sources[i]); 
@@ -7127,7 +7139,7 @@ uint16_t mode_particlewaterfall(void)
   PartSys->update();   // update and render
   return FRAMETIME;
 }
-static const char _data_FX_MODE_PARTICLEWATERFALL[] PROGMEM = "PS Waterfall@Speed,Intensity,Variation,Collisions,Position,Cylinder,Walls,Ground;;!;2;pal=9,sx=15,ix=200,c1=60,c2=160,c3=17,o1=0,o2=0,o3=1";
+static const char _data_FX_MODE_PARTICLEWATERFALL[] PROGMEM = "PS Waterfall@Speed,Intensity,Variation,Collisions,Position,Cylinder,Walls,Ground;;!;2;pal=9,sx=15,ix=96,c1=60,c2=160,c3=17,o1=0,o2=0,o3=1";
 
 /*
 Particle Box, applies gravity to particles in either a random direction or random but only downwards (sloshing)
@@ -7144,6 +7156,7 @@ uint16_t mode_particlebox(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1)) // init
       return mode_static(); // allocation failed
     PartSys->setBounceX(true);
@@ -7244,6 +7257,7 @@ uint16_t mode_particleperlin(void)
   uint32_t i;
   if (SEGMENT.call == 0) // initialization TODO: make this a PSinit function, this is needed in every particle FX but first, get this working.
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1, 0, true)) // init with 1 source and advanced properties
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setKillOutOfBounds(true); // should never happen, but lets make sure there are no stray particles
@@ -7317,6 +7331,7 @@ uint16_t mode_particleimpact(void)
 
   if (SEGMENT.call == 0) // initialization TODO: make this a PSinit function, this is needed in every particle FX but first, get this working.
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, NUMBEROFSOURCES)) // init, no additional data needed
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setKillOutOfBounds(false); // explosions out of frame ar allowed, set to true to save particles (TODO: better enable it in ESP8266?)
@@ -7448,6 +7463,7 @@ uint16_t mode_particleattractor(void)
   PSparticle *attractor; // particle pointer to the attractor
   if (SEGMENT.call == 0) // initialization
   {    
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1, 0, true)) // init using 1 source and advanced particle settings
       return mode_static(); // allocation failed
     	//DEBUG_PRINTF_P(PSTR("sources in FX %p\n"), &PartSys->sources[0]);	
@@ -7684,6 +7700,7 @@ uint16_t mode_particlespray(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1)) // init, no additional data needed
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setKillOutOfBounds(true); // out of bounds particles dont return (except on top, taken care of by gravity setting)
@@ -7700,12 +7717,13 @@ uint16_t mode_particlespray(void)
   if (PartSys == NULL)
     return mode_static(); // something went wrong, no data!
 
+  int grav = max(1, min(12, 256 / SEGENV.height())); // WLEDMM
   // Particle System settings
   PartSys->updateSystem(); // update system properties (dimensions and data pointers)
   PartSys->setBounceX(!SEGMENT.check2);
   PartSys->setWrapX(SEGMENT.check2);
   PartSys->setWallHardness(hardness);
-  PartSys->setGravity(8 * SEGMENT.check1); // enable gravity if checked (8 is default strength)
+  PartSys->setGravity(grav * SEGMENT.check1); // enable gravity if checked (8 is default strength) // WLEDMM
   //numSprays = min(PartSys->numSources, (uint8_t)1); // number of sprays
 
   if (SEGMENT.check3) // collisions enabled
@@ -7779,6 +7797,8 @@ uint16_t mode_particleGEQ(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
+    if (SEGMENT.custom3 == 16) SEGMENT.custom3 = max(2, min(192 / SEGENV.width(), 16)); // WLEDMM dirty trick to modify slider default value
     if (!initParticleSystem2D(PartSys, 1)) // init
       return mode_static(); // allocation failed
     PartSys->setKillOutOfBounds(true); 
@@ -7877,6 +7897,7 @@ if (SEGLEN == 1)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, NUMBEROFSOURCES)) // init, request 16 sources
       return mode_static(); // allocation failed
     numSprays = min(PartSys->numSources, (uint32_t)NUMBEROFSOURCES);
@@ -7897,7 +7918,7 @@ if (SEGLEN == 1)
     return mode_static(); // something went wrong, no data! 
 
   PartSys->updateSystem(); // update system properties (dimensions and data pointers)
-  numSprays = min(PartSys->numSources, (uint32_t)NUMBEROFSOURCES);
+  numSprays = max(uint32_t(1), min(PartSys->numSources, (uint32_t)NUMBEROFSOURCES));  // WLEDMM prevent div/0
 
   um_data_t *um_data;
   if (!usermods.getUMData(&um_data, USERMOD_ID_AUDIOREACTIVE))
@@ -7919,17 +7940,17 @@ if (SEGLEN == 1)
     if(SEGMENT.call % (32 - (SEGMENT.custom2 >> 3)) == 0 && SEGMENT.custom2 > 0)
       PartSys->sources[j].source.hue += 1 + (SEGMENT.custom2 >> 4);
     PartSys->sources[j].var = SEGMENT.custom3>>1;
-    int8_t emitspeed = 5 + (((uint32_t)fftResult[j] * ((uint32_t)SEGMENT.speed+20)) >> 10); // emit speed according to loudness of band
+    int8_t emitspeed = 5 + (((uint32_t)fftResult[j % 16] * ((uint32_t)SEGMENT.speed+20)) >> 10); // emit speed according to loudness of band // WLEDMM fix out-of-bounds access
     uint16_t emitangle = j * angleoffset + SEGENV.aux0;
 
     uint32_t emitparticles = 0;
-    if (fftResult[j] > threshold)
+    if (fftResult[j % 16] > threshold) // WLEDMM
     {
       emitparticles = 1; 
     }
-    else if (fftResult[j] > 0) // band has low value
+    else if (fftResult[j % 16] > 0) // band has low value //WLEDMM
     {
-      uint32_t restvolume = ((threshold - fftResult[j]) >> 2) + 2;
+      uint32_t restvolume = ((threshold - fftResult[j % 16]) >> 2) + 2; // WLEDMM
       if (random16() % restvolume == 0)
       {
         emitparticles = 1;
@@ -7958,6 +7979,7 @@ uint16_t mode_particleghostrider(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1)) // init, no additional data needed
       return mode_static(); // allocation failed; //allocation failed
     PartSys->setKillOutOfBounds(true); // out of bounds particles dont return (except on top, taken care of by gravity setting)
@@ -8048,6 +8070,7 @@ uint16_t mode_particleblobs(void)
 
   if (SEGMENT.call == 0) 
   {
+    SEGMENT.fill(BLACK);
     if (!initParticleSystem2D(PartSys, 1, 0, true, true)) //init, request one source, no additional bytes, advanced size & size control (actually dont really need one TODO: test if using zero sources also works)
       return mode_static(); // allocation failed
       PartSys->setBounceX(true);
@@ -9921,6 +9944,7 @@ uint16_t mode_particleFireworks1D(void)
 
   if (SEGMENT.call == 0) // initialization 
   {
+    if (SEGMENT.custom3 == 16) SEGMENT.custom3 = max(2, min(192 / SEGENV.width(), 16));  // WLEDMM dirty trick to modify slider default value
     if (!initParticleSystem1D(PartSys, 4, 4, true)) // init
       return mode_static(); // allocation failed
     PartSys->setKillOutOfBounds(true);
