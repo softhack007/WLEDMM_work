@@ -2072,8 +2072,8 @@ void ParticleSystem1D::handleCollisions()
         {
           if (advPartProps) // use advanced size properties
           {
-            //collisiondistance = PS_P_MINHARDRADIUS_1D + ((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1;
-            collisiondistance = (PS_P_MINHARDRADIUS_1D) + (((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1); // WLEDMM fix compiler warning: suggest parentheses around '+' inside '>>' 
+            collisiondistance = PS_P_MINHARDRADIUS_1D + ((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1;
+            //collisiondistance = (PS_P_MINHARDRADIUS_1D) + (((uint32_t)advPartProps[i].size + (uint32_t)advPartProps[j].size)>>1); // WLEDMM trying fix compiler warning: suggest parentheses around '+' inside '>>' 
           }
           dx = particles[j].x - particles[i].x;  
           int32_t  dv = (int32_t)particles[j].vx - (int32_t)particles[i].vx;        
