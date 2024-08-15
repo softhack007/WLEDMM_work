@@ -32,7 +32,7 @@
 #include "fcn_declare.h"
 
 #if !defined(WLED_DISABLE_PARTICLESYSTEM2D) || !defined(WLED_DISABLE_PARTICLESYSTEM1D)  
-#include "FXparticleSystem.h"
+#include "FXparticleSystem.hpp"
 #endif
 
 #define IBN 5100
