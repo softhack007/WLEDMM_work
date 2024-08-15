@@ -799,6 +799,14 @@ uint32_t BusHub75Matrix::getPixelColor(uint16_t pix) const {
     return getBitFromArray(_ledsDirty, pix) ? DARKGREY: BLACK;   // just a hack - we only know if the pixel is black or not
 }
 
+uint32_t BusHub75Matrix::getPixelColor_fullBright(uint16_t pix) const {
+  if (!_valid || pix >= _len) return BLACK;
+  if (_ledBuffer)
+    return uint32_t(_ledBuffer[pix]) & 0x00FFFFFF;  // scale8() is needed to mimic NeoPixelBus, which returns scaled-down colours
+  else
+    return getBitFromArray(_ledsDirty, pix) ? DARKGREY: BLACK;   // just a hack - we only know if the pixel is black or not
+}
+
 void BusHub75Matrix::setBrightness(uint8_t b, bool immediate) {
   _bri = b;
   if (_bri > 238) _bri=238;
@@ -1014,6 +1022,28 @@ uint32_t IRAM_ATTR  __attribute__((hot)) BusManager::getPixelColor(uint_fast16_t
   }
   return 0;
 }
+
+uint32_t IRAM_ATTR __attribute__((hot)) BusManager::getPixelColor_fullBright(uint_fast16_t pix) {     // WLEDMM use fast native types, IRAM_ATTR
+  if ((pix >= laststart) && (pix < lastend ) && (lastBus != nullptr)) {
+    // WLEDMM same bus as last time - no need to search again
+    return lastBus->getPixelColor_fullBright(pix - laststart);
+  }
+
+  for (uint_fast8_t i = 0; i < numBusses; i++) {
+    Bus* b = busses[i];
+    uint_fast16_t bstart = b->getStart();
+    if (pix < bstart || pix >= bstart + b->getLength()) continue;
+    else {
+      // WLEDMM remember last Bus we took
+      lastBus = b;
+      laststart = bstart; 
+      lastend = bstart + b->getLength();
+      return b->getPixelColor_fullBright(pix - bstart);
+    }
+  }
+  return 0;
+}
+
 
 bool BusManager::canAllShow() const {
   for (uint8_t i = 0; i < numBusses; i++) {

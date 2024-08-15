@@ -1268,7 +1268,11 @@ uint32_t __attribute__((hot)) Segment::getPixelColor(int i) const
   if (offset < INT16_MAX) i += offset; // WLEDMM
   if ((i >= stop) && (stop>0)) i -= length(); // WLEDMM avoid negative index (stop = 0 is a possible value)
   if (i<0) i=0; // WLEDMM just to be 100% sure
+#if 0
   return strip.getPixelColor(i);
+#else
+  return strip.getPixelColor_fullBright(i);
+#endif
 }
 
 uint8_t Segment::differs(Segment& b) const {
@@ -1388,7 +1392,8 @@ void __attribute__((hot)) Segment::fill(uint32_t c) {
 
 // Blends the specified color with the existing pixel color.
 void Segment::blendPixelColor(int n, uint32_t color, uint8_t blend) {
-  setPixelColor(n, color_blend(getPixelColor(n), color, blend));
+  if (blend == UINT8_MAX) setPixelColor(n, color); 
+  else setPixelColor(n, color_blend(getPixelColor(n), color, blend));
 }
 
 // Adds the specified color with the existing pixel color perserving color balance.
@@ -1903,6 +1908,14 @@ uint32_t WS2812FX::getPixelColor(uint_fast16_t i) const // WLEDMM fast int types
   if (i >= _length) return 0;
   return busses.getPixelColor(i);
 }
+
+uint32_t WS2812FX::getPixelColor_fullBright(uint_fast16_t i) const // WLEDMM fast int types
+{
+  if (i < customMappingSize) i = customMappingTable[i];
+  if (i >= _length) return 0;
+  return busses.getPixelColor_fullBright(i);
+}
+
 
 
 //DISCLAIMER

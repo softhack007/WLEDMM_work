@@ -1004,6 +1004,7 @@ class WS2812FX {  // 96 bytes
       now,
       timebase;
     uint32_t __attribute__((pure)) getPixelColor(uint_fast16_t)  const;   // WLEDMM attribute pure = does not have side-effects
+    uint32_t __attribute__((pure)) getPixelColor_fullBright(uint_fast16_t)  const;   // WLEDMM gets the original color from the driver (without downscaling by _bri)
 
     inline uint32_t getLastShow(void)  const { return _lastShow; }
     inline uint32_t segColor(uint8_t i)  const { return _colors_t[i]; }
@@ -1081,7 +1082,8 @@ class WS2812FX {  // 96 bytes
     inline void setPixelColorXY(int x, int y, CRGB c)                             { setPixelColorXY(x, y, RGBW32(c.r,c.g,c.b,0)); }
 
     uint32_t
-      getPixelColorXY(uint16_t, uint16_t)  const;
+      getPixelColorXY(uint16_t, uint16_t) const,
+      getPixelColorXY_fullBright(uint16_t, uint16_t) const;
 
   // end 2D support
 

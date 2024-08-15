@@ -229,6 +229,20 @@ uint32_t __attribute__((hot)) WS2812FX::getPixelColorXY(uint16_t x, uint16_t y) 
   return busses.getPixelColor(index);
 }
 
+#if 1
+// returns RGBW values of pixel
+uint32_t __attribute__((hot)) WS2812FX::getPixelColorXY_fullBright(uint16_t x, uint16_t y) const {
+#ifndef WLED_DISABLE_2D
+  uint_fast16_t index = (y * Segment::maxWidth + x); //WLEDMM: use fast types
+#else
+  uint16_t index = x;
+#endif
+  if (index < customMappingSize) index = customMappingTable[index];
+  if (index >= _length) return 0;
+  return busses.getPixelColor_fullBright(index);
+}
+#endif
+
 ///////////////////////////////////////////////////////////
 // Segment:: routines
 ///////////////////////////////////////////////////////////
@@ -436,12 +450,17 @@ uint32_t IRAM_ATTR_YN Segment::getPixelColorXY(int x, int y) const {
   x *= groupLength(); // expand to physical pixels
   y *= groupLength(); // expand to physical pixels
   if (x >= width() || y >= height()) return 0;
+#if 0
   return strip.getPixelColorXY(start + x, startY + y);
+#else
+  return strip.getPixelColorXY_fullBright(start + x, startY + y);  // WLEDMM no brightness scaling
+#endif
 }
 
 // Blends the specified color with the existing pixel color.
 void Segment::blendPixelColorXY(uint16_t x, uint16_t y, uint32_t color, uint8_t blend) {
-  setPixelColorXY(x, y, color_blend(getPixelColorXY(x,y), color, blend));
+  if (blend == UINT8_MAX) setPixelColorXY(x, y, color);
+  else setPixelColorXY(x, y, color_blend(getPixelColorXY(x,y), color, blend));
 }
 
 // Adds the specified color with the existing pixel color perserving color balance.

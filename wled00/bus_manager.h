@@ -135,6 +135,7 @@ class Bus {
     virtual void     setStatusPixel(uint32_t c) {}
     virtual void     setPixelColor(uint16_t pix, uint32_t c) = 0;
     virtual uint32_t getPixelColor(uint16_t pix) const { return 0; }
+    virtual uint32_t getPixelColor_fullBright(uint16_t pix) const { return getPixelColor(pix); }
     virtual void     setBrightness(uint8_t b, bool immediate=false) { _bri = b; };
     virtual void     cleanup() = 0;
     virtual uint8_t  getPins(uint8_t* pinArray) const { return 0; }
@@ -367,6 +368,7 @@ class BusHub75Matrix : public Bus {
 
     void setPixelColor(uint16_t pix, uint32_t c) override;
     uint32_t getPixelColor(uint16_t pix) const override;
+    uint32_t getPixelColor_fullBright(uint16_t pix) const override;
 
     void show(void) override;
 
@@ -418,6 +420,7 @@ class BusManager {
     void setSegmentCCT(int16_t cct, bool allowWBCorrection = false);
 
     uint32_t __attribute__((pure)) getPixelColor(uint_fast16_t pix); // WLEDMM attribute added
+    uint32_t __attribute__((pure)) getPixelColor_fullBright(uint_fast16_t pix); // WLEDMM attribute added
 
     bool canAllShow() const;
 
