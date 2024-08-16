@@ -7281,7 +7281,7 @@ uint16_t mode_particleperlin(void)
   PartSys->enableParticleCollisions(SEGMENT.check3, SEGMENT.custom1); // enable collisions and set particle collision hardness
   uint32_t displayparticles = map(SEGMENT.intensity, 0, 255, 10, PartSys->numParticles>>1);
   PartSys->setUsedParticles(displayparticles);
-  PartSys->setMotionBlur(230); // anable motion blur
+  PartSys->setMotionBlur(208); // anable motion blur
   // apply 'gravity' from a 2D perlin noise map
   SEGENV.aux0 += 1 + (SEGMENT.speed >> 5); // noise z-position
   // update position in noise
@@ -7717,7 +7717,7 @@ uint16_t mode_particlespray(void)
   if (PartSys == NULL)
     return mode_static(); // something went wrong, no data!
 
-  int grav = max(1, min(12, 256 / SEGENV.height())); // WLEDMM
+  int grav = max(1, min(12, 384 / SEGENV.height())); // WLEDMM
   // Particle System settings
   PartSys->updateSystem(); // update system properties (dimensions and data pointers)
   PartSys->setBounceX(!SEGMENT.check2);
