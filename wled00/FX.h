@@ -351,11 +351,12 @@ bool strip_uses_global_leds(void) __attribute__((pure));  // WLEDMM implemented 
 // #define FX_MODE_PALETTE_AR             193 // WLED-SR audioreactive palette
 #define FX_MODE_FIREWORKS_AR           194 // WLED-SR audioreactive fireworks
 #define FX_MODE_GEQLASER               195 // WLED-MM GEQ Laser
-#define FX_MODE_2DPAINTBRUSH           196 // WLED-MM 2D Painbrush
+#define FX_MODE_2DPAINTBRUSH           196 // WLED-MM Paintbrush
 
 #if defined(WLED_DISABLE_PARTICLESYSTEM2D) && defined(WLED_DISABLE_PARTICLESYSTEM1D)  
 
-#define MODE_COUNT                     197
+#define FX_MODE_2DSNOWFALL             197 // WLED-MM Snowfall
+#define MODE_COUNT                     198
 
 #else
 #define FX_MODE_PARTICLEVOLCANO        197
@@ -384,7 +385,8 @@ bool strip_uses_global_leds(void) __attribute__((pure));  // WLEDMM implemented 
 #define FX_MODE_PSCHASE                220
 #define FX_MODE_PSSTARBURST            221
 #define FX_MODE_PS1DGEQ                222
-#define MODE_COUNT                     223
+#define FX_MODE_2DSNOWFALL             223 // WLED-MM Snowfall
+#define MODE_COUNT                     224
 #endif
 
 typedef enum mapping1D2D {
@@ -978,9 +980,9 @@ class WS2812FX {  // 96 bytes
       milliampsPerLed,
       cctBlending,
       getActiveSegmentsNum(void)  const,
-      getFirstSelectedSegId(void) __attribute__((pure)),
+      __attribute__((pure)) getFirstSelectedSegId(void),
       getLastActiveSegmentId(void) const,
-      getActiveSegsLightCapabilities(bool selectedOnly = false) __attribute__((pure)),
+      __attribute__((pure)) getActiveSegsLightCapabilities(bool selectedOnly = false),
       setPixelSegment(uint8_t n);
 
     inline uint8_t getBrightness(void)  const { return _brightness; }
