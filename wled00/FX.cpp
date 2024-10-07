@@ -3214,7 +3214,7 @@ static const char _data_FX_MODE_SOLID_GLITTER[] PROGMEM = "Solid Glitter@,!;Bg,,
 
 
 //each needs 19 bytes
-//Spark type is used for popcorn, 1D fireworks, and drip
+//Spark type is used for popcorn, 1D fireworks
 typedef struct Spark {
   float pos, posX;
   float vel, velX;
@@ -3242,6 +3242,11 @@ static uint16_t mode_popcorn_core(bool useaudio) {
 
   Spark* popcorn = reinterpret_cast<Spark*>(SEGENV.data);
 
+  if (SEGENV.call == 0) {
+    SEGMENT.fill(BLACK);     // WLEDMM clear LEDs at startup
+    SEGENV.step = strip.now; // initial time
+  }
+
   bool hasCol2 = SEGCOLOR(2);
   if (!SEGMENT.check2) SEGMENT.fill(hasCol2 ? BLACK : SEGCOLOR(1));
 
@@ -3254,9 +3259,9 @@ static uint16_t mode_popcorn_core(bool useaudio) {
   }
 
   struct virtualStrip {
-    static void runStrip(uint16_t stripNr, Spark* popcorn, bool useaudio, um_data_t *um_data) {  // WLEDMM added useaudio and um_data
-      float gravity = -0.0001f - (SEGMENT.speed/200000.0f); // m/s/s
-      gravity *= SEGLEN;
+    static void runStrip(uint16_t stripNr, Spark* popcorn, bool useaudio, um_data_t *um_data, float deltaTime) {  // WLEDMM added useaudio and um_data
+      float gravity = -0.0001f - (SEGMENT.speed/180000.0f); // m/s/s  // WLEDMM original value was "-0.0001f - (SEGMENT.speed/200000.0f)"
+      gravity *= min(max(1, SEGLEN-1), 255);                          // WLEDMM speed limit 255
 
       uint8_t numPopcorn = SEGMENT.intensity*maxNumPopcorn/255;
       if (numPopcorn == 0) numPopcorn = 1;
@@ -3267,8 +3272,8 @@ static uint16_t mode_popcorn_core(bool useaudio) {
 
       for(int i = 0; i < numPopcorn; i++) {
         if (popcorn[i].pos >= 0.0f) { // if kernel is active, update its position
-          popcorn[i].pos += popcorn[i].vel;
-          popcorn[i].vel += gravity;
+          popcorn[i].pos += popcorn[i].vel * deltaTime;
+          popcorn[i].vel += gravity * deltaTime;
         } else { // if kernel is inactive, randomly pop it
           bool doPopCorn = false;  // WLEDMM allows to inhibit new pops
           // WLEDMM begin
@@ -3287,7 +3292,7 @@ static uint16_t mode_popcorn_core(bool useaudio) {
 
             uint16_t peakHeight = 128 + random8(128); //0-255
             peakHeight = (peakHeight * (SEGLEN -1)) >> 8;
-            popcorn[i].vel = sqrtf(-2.0f * gravity * peakHeight);
+            popcorn[i].vel = sqrtf(-2.01f * gravity * peakHeight);
 
             if (SEGMENT.palette)
             {
@@ -3304,19 +3309,31 @@ static uint16_t mode_popcorn_core(bool useaudio) {
           if (!SEGMENT.palette && popcorn[i].colIndex < NUM_COLORS) col = SEGCOLOR(popcorn[i].colIndex);
           uint16_t ledIndex = popcorn[i].pos;
           if (ledIndex < SEGLEN) SEGMENT.setPixelColor(indexToVStrip(ledIndex, stripNr), col);
+          // WLEDMM add small trail
+          for (int n=1; n<4; n++) {
+            float spdLimit = n;
+            unsigned fade = 128 - 32*n;
+            uint32_t trailColor = color_fade(col, fade, true);
+            if ((popcorn[i].vel < -spdLimit) && (ledIndex+n < SEGLEN)) SEGMENT.setPixelColor(indexToVStrip(ledIndex+n, stripNr), trailColor);
+            if ((popcorn[i].vel > spdLimit) && (ledIndex >= n)) SEGMENT.setPixelColor(indexToVStrip(ledIndex-n, stripNr), trailColor);
+          }
         }
       }
     }
   };
 
+  // WLEDMM calculate time passed
+  uint32_t millisPassed = min(max(1U, unsigned(strip.now - SEGENV.step)), 200U); // constrain between 1 and 200
+  SEGENV.step = strip.now;
+  float deltaTime = useaudio ? float(millisPassed) / 8.0f : float(millisPassed) / 16.0f;  // base speed: 64 FPS (normal) / 120fps (audioreactive) 
   for (int stripNr=0; stripNr<strips; stripNr++)
-    virtualStrip::runStrip(stripNr, &popcorn[stripNr * neededPopcorn], useaudio, um_data); // WLEDMM added useaudio and um_data
+    virtualStrip::runStrip(stripNr, &popcorn[stripNr * neededPopcorn], useaudio, um_data, deltaTime); // WLEDMM added useaudio and um_data
 
   return FRAMETIME;
 }
 
 uint16_t mode_popcorn(void) { return mode_popcorn_core(false); }
-static const char _data_FX_MODE_POPCORN[] PROGMEM = "Popcorn@!,!,,,,,Overlay;!,!,!;!;1.5d;m12=1"; //bar WLEDMM 1.5d
+static const char _data_FX_MODE_POPCORN[] PROGMEM = "Popcorn ☾@!,!,,,,,Overlay;!,!,!;!;1.5d;m12=1"; //bar WLEDMM 1.5d
 
 uint16_t mode_popcorn_audio(void) { return mode_popcorn_core(true); }
 static const char _data_FX_MODE_POPCORN_AR[] PROGMEM = "Popcorn audio ☾@!,!,,,,,Overlay;!,!,!;!;1v,1.5d;m12=1"; //bar WLEDMM 1.5d
@@ -3719,6 +3736,17 @@ uint16_t mode_exploding_fireworks(void)
 static const char _data_FX_MODE_EXPLODING_FIREWORKS[] PROGMEM = "Fireworks 1D@Gravity,Firing side;!,!;!;12;pal=11,ix=128";
 
 
+
+//SparkDrop type is used for drip
+typedef struct __attribute__ ((packed)) SparkDrop {
+  float pos;
+  float boost;  // speed "kick" when dropping
+  float vel; 
+  uint32_t aux; // aux variable (RGBW color)
+  uint16_t col;
+  uint8_t colIndex;
+} sparkdrop;
+
 /*
  * Drip Effect
  * ported of: https://www.youtube.com/watch?v=sru2fXh4r7k
@@ -3729,20 +3757,24 @@ uint16_t mode_drip(void)
   //allocate segment data
   uint16_t strips = SEGMENT.nrOfVStrips();
   const int maxNumDrops = 4;
-  uint16_t dataSize = sizeof(spark) * maxNumDrops;
+  uint16_t dataSize = sizeof(sparkdrop) * maxNumDrops;
   if (!SEGENV.allocateData(dataSize * strips)) return mode_static(); //allocation failed
-  Spark* drops = reinterpret_cast<Spark*>(SEGENV.data);
+  SparkDrop* drops = reinterpret_cast<SparkDrop*>(SEGENV.data);
 
-  if (SEGENV.call == 0) SEGMENT.fill(BLACK);    // WLEDMM clear LEDs at startup
+  if (SEGENV.call == 0) {
+    SEGMENT.fill(BLACK);     // WLEDMM clear LEDs at startup
+    SEGENV.step = strip.now; // initial time
+  }
   if (!SEGMENT.check2) SEGMENT.fill(SEGCOLOR(1));
 
   struct virtualStrip {
-    static void runStrip(uint16_t stripNr, Spark* drops) {
+    static void runStrip(uint16_t stripNr, SparkDrop* drops, float deltaTime) {  // WLEDMM added deltaTime
 
       uint8_t numDrops = 1 + (SEGMENT.intensity >> 6); // 255>>6 = 3
 
-      float gravity = -0.0005f - (float(SEGMENT.speed)/35000.0f); //increased gravity (50000 to 35000)
-      gravity *= min(max(1, SEGLEN-1), 255);                      //WLEDMM speed limit 255
+      float theSpeed = (SEGMENT.speed * SEGMENT.speed) / 255.0f;   // WLEDMM
+      float gravity = -0.0002f - theSpeed/42000.0f; //gravity      // WLEDMM adjusted
+      gravity *= min(max(1, SEGLEN-1), 255);                       // WLEDMM speed limit 255
       const int sourcedrop = 12;
 
       for (int j=0;j<numDrops;j++) {
@@ -3751,37 +3783,44 @@ uint16_t mode_drip(void)
           drops[j].vel = 0;           // speed
           drops[j].col = sourcedrop;  // brightness
           drops[j].colIndex = 1;      // drop state (0 init, 1 forming, 2 falling, 5 bouncing)
-          drops[j].velX = SEGMENT.color_from_palette(random8(), false, PALETTE_SOLID_WRAP, 0); // random color
+          drops[j].aux = SEGMENT.color_from_palette(1 + random8(254), false, PALETTE_SOLID_WRAP, 0); // random color - WLEDMM avoid 0 which is usually BLACK
+          drops[j].boost = 0.65f + float(random8()) / 512.0f; // between 0.65 and 1.15
         }
-        uint32_t dropColor = drops[j].velX;
+        uint32_t dropColor = drops[j].aux;
 
         SEGMENT.setPixelColor(indexToVStrip(SEGLEN-1, stripNr), color_blend(BLACK,dropColor, sourcedrop));// water source
         if (drops[j].colIndex==1) {
           if (drops[j].col>255) drops[j].col=255;
-          SEGMENT.setPixelColor(indexToVStrip(uint16_t(drops[j].pos), stripNr), color_blend(BLACK,dropColor,drops[j].col));
+          int intPos = max(0.0f, roundf(drops[j].pos));           // WLEDMM round it first
+          SEGMENT.setPixelColor(int(indexToVStrip(intPos, stripNr)), color_blend(BLACK,dropColor,drops[j].col));
 
-          drops[j].col += map(SEGMENT.custom1, 0, 255, 1, 6); // swelling
+          unsigned swell = map(SEGMENT.custom1, 0, 255, 1, 6); // swelling 
+          drops[j].col += swell;
+          if (drops[j].boost < 4.0f) drops[j].boost += 0.012f * float(swell);    // increase mass when swelling
 
           uint32_t fallrate = (drops[j].col * (1 + SEGMENT.custom1 * SEGMENT.custom1)) / 192;  // WLEDMM specific
           if (random16() <= (fallrate / 10)) {                                                 // random drop => 1% ... 20% probalibity
             drops[j].colIndex=2;               //fall
             drops[j].col=255;
+            drops[j].vel = gravity * 2.0f * drops[j].boost;  // WLEDMM initial kick
           }
         }
         if (drops[j].colIndex > 1) {           // falling
           if (drops[j].pos > 0.01f) {          // fall until end of segment
-            drops[j].pos += drops[j].vel;
+            drops[j].pos += drops[j].vel * deltaTime;
             if (drops[j].pos < 0) drops[j].pos = 0;
-            drops[j].vel += gravity;           // gravity is negative
+            drops[j].vel += gravity * deltaTime;         // gravity is negative
 
-            for (int i=1;i<7-drops[j].colIndex;i++) { // some minor math so we don't expand bouncing droplets
-              int intPos = roundf(drops[j].pos) +i;           // WLEDMM round it first
+            int maxLen = 8 + SEGMENT.speed/64;
+            for (int i=1; i < maxLen-drops[j].colIndex; i++) { // some minor math so we don't expand bouncing droplets
+              int intPos = roundf(drops[j].pos + float(i));           // WLEDMM round it first
+              if ((intPos >= SEGLEN) || (intPos < 0)) break;          // WLEDMM skip off-screen pixels
               uint16_t pos = constrain(intPos, 0, SEGLEN-1);  //this is BAD, returns a pos >= SEGLEN occasionally // WLEDMM bad cast to uint16_t removed
               SEGMENT.setPixelColor(indexToVStrip(pos, stripNr), color_blend(BLACK,dropColor,drops[j].col/i)); //spread pixel with fade while falling
             }
 
             if (drops[j].colIndex > 2) {       // during bounce, some water is on the floor
-              SEGMENT.setPixelColor(indexToVStrip(0, stripNr), color_blend(dropColor,BLACK, (2 * drops[j].col)/3)); // WLEDMM reduced brightness
+              SEGMENT.addPixelColor(indexToVStrip(0, stripNr), color_blend(dropColor,BLACK, drops[j].col*4));  // WLEDMM darker
             }
           } else {                             // we hit bottom
             if (drops[j].colIndex > 2) {       // already hit once, so back to forming
@@ -3791,8 +3830,11 @@ uint16_t mode_drip(void)
             } else {
 
               if (drops[j].colIndex==2) {      // init bounce
-                drops[j].vel = -drops[j].vel/4;// reverse velocity with damping
-                drops[j].pos += drops[j].vel;
+                // reverse velocity with damping
+                if (SEGLEN > 16) drops[j].vel = -drops[j].vel/3.5f;
+                else drops[j].vel = -drops[j].vel/4.5f;
+                // do bounce
+                drops[j].pos += drops[j].vel * deltaTime * drops[j].boost*0.5f;
               }
               drops[j].col = sourcedrop*2;
               drops[j].colIndex = 5;           // bouncing
@@ -3803,12 +3845,16 @@ uint16_t mode_drip(void)
     }
   };
 
+  // WLEDMM calculate time passed
+  uint32_t millisPassed = min(max(1U, unsigned(strip.now - SEGENV.step)), 180U); // constrain between 1 and 180
+  SEGENV.step = strip.now;
+  float deltaTime = float(millisPassed) / 20.0f;  // base speed 50 FPS
   for (int stripNr=0; stripNr<strips; stripNr++)
-    virtualStrip::runStrip(stripNr, &drops[stripNr*maxNumDrops]);
+    virtualStrip::runStrip(stripNr, &drops[stripNr*maxNumDrops], deltaTime);
 
   return FRAMETIME;
 }
-static const char _data_FX_MODE_DRIP[] PROGMEM = "Drip@Gravity,# of drips,Fall ratio,,,,Overlay;!,!;!;1.5d;c1=127,m12=1"; //bar WLEDMM 1.5d
+static const char _data_FX_MODE_DRIP[] PROGMEM = "Drip ☾@Gravity,# of drips,Fall ratio,,,,Overlay;!,!;!;1.5d;c1=127,m12=1"; //bar WLEDMM 1.5d
 
 
 /*
